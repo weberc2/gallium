@@ -4,8 +4,9 @@
 package main
 
 import (
-    "fmt",
-    "strings",
+    "fmt"
+    "strings"
+    "strconv"
 )
 
 
@@ -25,19 +26,32 @@ impl Operator {
     }
 }
 
-// Sum-type, generic enums
-enum Operand<V> { Variable V, Literal f64 }
+enum Literal {
+    String string,
+    Integer i64,
+    Decimal f64,
+}
 
-// Interfaces can be used as traits, but traits are probably more general (can
-// specify other types, for example)? We can certainly guarantee that
-// interfaces *can* be monomorphized, but maybe there's something to be said
-// for dynamic dispatch semantics ("interfaces *mean* dynamic dispatch")? In
-// the worst case, we just define a Stringer trait.
-impl<V> Operand<V: fmt.Stringer> {
+impl Literal {
+    fn Compile(self) -> string {
+        match self {
+            Literal::String(s) => "'" + s + "'",
+            Literal::Integer(i) => strconv.Itoa(i),
+            Literal::Decimal(d) => fmt.FormatFloat(d, 'f', 64),
+        }
+    }
+}
+
+trait Stringer { fn String(self) -> string }
+
+// Sum-type, generic enums
+enum Operand<V, L> { Variable V, Literal L}
+
+impl<V> Operand<V: Stringer> {
     fn Compile(self) -> string {
         match self {
             Operand::Variable(v) => "\"" + v.String() + "\"",
-            Operand::Literal(l) => fmt.FormatFloat(l, 'f', 64),
+            Operand::Literal(l) => l.Compile(),
         }
     }
 }
@@ -67,4 +81,25 @@ impl Expression {
             ) + ")",
         }
     }
+}
+
+impl Stringer for string {
+    fn String(self) -> string { self }
+}
+
+fn main() {
+    // `let` indicates an immutable binding
+    let ridesForFree = Expression::Or{
+        Expression::Comparison{
+            Left: Operand::Variable("age"),
+            Operator: Operator::Lt,
+            Right: Operand::Literal(11),
+        },
+        Expression::Comparison{
+            Left: Operand::Variable("age"),
+            Operator: Operator::Ge,
+            Right: Operand::Literal(65),
+        },
+    };
+    fmt.Println(ridesForFree.Compile());
 }

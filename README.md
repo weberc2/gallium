@@ -2,7 +2,11 @@ GALLIUM
 -------
 
 A proposal for a pragmatic, functional, syntactically-Rust-like language that
-compiles to Go. Check out the [example][0].
+compiles to Go. Check out [this quick sketch][0] to get an idea about how this
+could look. Right now, nothing is really nailed down, and I'd like to discuss
+it all. This repository will change as I get feedback on social media, and
+eventually if/when the conversation stabilizes/focuses, we can begin
+discussions here on Github.
 
 ## Disclaimer
 
@@ -27,6 +31,16 @@ management impose an unacceptable productivity cost for a large swath of
 applications[^a]. Go has a world-class runtime, blazing fast compiler[^b],
 great project tooling, no runtime dependencies, but limited immutability, no
 sum types, and no type-safe generics[^c].
+
+## Feature Ideas
+
+* Sum types: These would be compiler enforced, and they would be implemented as
+  a simple tagged union (implemented with Go's unsafe package).
+* Generics: Simple template expansion.
+* Traits: These are basically static/monomorphic interfaces that can be used to
+  constrain generic types.
+* No zero values: compiler guarantees that values are initialized
+* Interop with Go
 
 [^a]: Yes, Rust precludes a lot of concurrency bugs, but it's my opinion that
       the time spent pacifying the compiler is greater than the time spent
