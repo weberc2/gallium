@@ -45,7 +45,9 @@ sum types, and no type-safe generics[^c].
 [^a]: Yes, Rust precludes a lot of concurrency bugs, but it's my opinion that
       the time spent pacifying the compiler is greater than the time spent
       debugging concurrency bugs in a language like Go. YMMV.
+      
 [^b]: Partly due to its lack of generics...
+
 [^c]: It's possible much of this will be fixed in Go2, but no one knows when
       Go2 will be released or the degree to which it will even address these
       problems.
