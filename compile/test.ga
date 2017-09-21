@@ -1,0 +1,5 @@
+package main
+
+let nine = 9;
+
+let main = add 9 42;

@@ -1,447 +1,283 @@
 package main
 
 import (
-	"fmt"
 	"testing"
 )
 
-func TestParseFile(t *testing.T) {
-	input := `package main
-
-	fn double(i: int) -> int {
-		let two = 2;
-		mul(i, two)
-	}
-
-	fn main() {
-		println(double(1));
-	}`
-
-	wanted := File{
-		Package: "main",
-		Decls: []FuncDecl{{
-			Name: "double",
-			Args: []ArgDecl{{Name: "i", Type: "int"}},
-			Ret:  "int",
-			Body: ExprBlockExpr(BlockExpr{
-				Stmts: []Stmt{StmtLetStmt(LetStmt{
-					Binding: "two",
-					Expr:    ExprInt(2),
-				})},
-				Expr: ExprCallExpr(&CallExpr{
-					Callable:  ExprIdent("mul"),
-					Arguments: []Expr{ExprIdent("i"), ExprIdent("two")},
-				}).Ptr(),
-			}),
-		}, {
-			Name: "main",
-			Body: ExprBlockExpr(BlockExpr{
-				Stmts: []Stmt{
-					StmtExpr(ExprCallExpr(&CallExpr{
-						Callable: ExprIdent("println"),
-						Arguments: []Expr{
-							ExprCallExpr(&CallExpr{
-								Callable:  ExprIdent("double"),
-								Arguments: []Expr{ExprInt(1)},
-							}),
-						},
-					})),
-				},
-			}),
-		}},
-	}
-
-	file, _, err := parseFile(NewStringInput(input))
-	if err != nil {
-		t.Fatal("Unexpected error:", err)
-	}
-
-	if !file.Equal(wanted) {
-		t.Fatalf("Wanted:\n%s\n\nGot:\n%s", wanted.Pretty(0), file.Pretty(0))
-	}
-}
-
-func TestParseFuncDecl(t *testing.T) {
+func TestParsers(t *testing.T) {
 	testCases := []struct {
-		name      string
-		input     string
-		wanted    FuncDecl
-		wantedErr error
-		skip      bool
-	}{{
-		name:   "no-args_no-ret_int-expr-body",
-		input:  "fn thirtyThree() 33",
-		wanted: FuncDecl{Name: "thirtyThree", Body: ExprInt(33)},
-	}, {
-		name:  "no-args_explicit-ret_int-expr-body",
-		input: "fn thirtyThree() -> int 33",
-		wanted: FuncDecl{
-			Name: "thirtyThree",
-			Body: ExprInt(33),
-			Ret:  Type("int"),
+		name       string
+		input      Input
+		wanted     Node
+		wantedRest Input
+		parse      Parser
+	}{
+		{
+			name:   "term-ident",
+			input:  "bar",
+			wanted: TermIdent("bar"),
+			parse:  ParseTerm,
 		},
-	}, {
-		name:  "one-arg_explicit-ret_ident-expr-body",
-		input: "fn identity(i:int) -> int i",
-		wanted: FuncDecl{
-			Name: "identity",
-			Args: []ArgDecl{{Name: "i", Type: Type("int")}},
-			Body: ExprIdent("i"),
-			Ret:  Type("int"),
+		{
+			name:   "term-int",
+			input:  "132",
+			wanted: TermInt(132),
+			parse:  ParseTerm,
 		},
-	}, {
-		name:   "empty-body",
-		input:  "fn empty() {}",
-		wanted: FuncDecl{Name: "empty", Body: ExprBlockExpr(BlockExpr{})},
-	}, {
-		name:  "complex-body",
-		input: "fn complex() -> int { let x = pow(4, 2); div(x, 2) }",
-		wanted: FuncDecl{
-			Name: "complex",
-			Body: ExprBlockExpr(BlockExpr{
+		{
+			name:   "term-string",
+			input:  `"foo"`,
+			wanted: TermString("foo"),
+			parse:  ParseTerm,
+		},
+		{
+			name:   "term-paren-group",
+			input:  "(foo)",
+			wanted: TermExpr(NewExpr(TermIdent("foo"))),
+			parse:  ParseTerm,
+		},
+		{
+			name:   "expr-ident",
+			input:  "_abc123",
+			wanted: NewExpr(TermIdent("_abc123")),
+			parse:  ParseExpr,
+		},
+		{
+			name:  "expr",
+			input: `foo 1 2 "abc"`,
+			wanted: NewExpr(
+				TermIdent("foo"),
+				TermInt(1),
+				TermInt(2),
+				TermString("abc"),
+			),
+			parse: ParseExpr,
+		},
+		{
+			name:  "expr-w-paren-group",
+			input: "foo (bar baz) qux",
+			wanted: NewExpr(
+				TermIdent("foo"),
+				TermExpr(NewExpr(TermIdent("bar"), TermIdent("baz"))),
+				TermIdent("qux"),
+			),
+			parse: ParseExpr,
+		},
+		{
+			name:   "binding-decl",
+			input:  "let x = 42",
+			wanted: BindingDecl{"x", NewExpr(TermInt(42))},
+			parse:  ParseBindingDecl,
+		},
+		{
+			name:   "stmt-binding",
+			input:  "let x = 42;",
+			wanted: StmtBinding(BindingDecl{"x", NewExpr(TermInt(42))}),
+			parse:  ParseStmt,
+		},
+		{
+			name:  "stmt-expr",
+			input: "foo 42 i;",
+			wanted: StmtExpr(NewExpr(
+				TermIdent("foo"),
+				TermInt(42),
+				TermIdent("i"),
+			)),
+			parse: ParseStmt,
+		},
+		{
+			name:  "block",
+			input: "{ foo; bar; baz }",
+			wanted: Block{
 				Stmts: []Stmt{
-					StmtLetStmt(LetStmt{
-						Binding: "x",
-						Expr: ExprCallExpr(&CallExpr{
-							Callable:  ExprIdent("pow"),
-							Arguments: []Expr{ExprInt(4), ExprInt(2)},
-						}),
-					}),
+					StmtExpr(NewExpr(TermIdent("foo"))),
+					StmtExpr(NewExpr(TermIdent("bar"))),
 				},
-				Expr: ExprCallExpr(&CallExpr{
-					Callable:  ExprIdent("div"),
-					Arguments: []Expr{ExprIdent("x"), ExprInt(2)},
-				}).Ptr(),
-			}),
-			Ret: Type("int"),
+				Expr: &Expr{Head: TermIdent("baz")},
+			},
+			parse: ParseBlock,
 		},
-	}}
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			decl, _, err := parseFuncDecl(NewStringInput(testCase.input))
-			if err != nil {
-				t.Fatal("Unexpected error:", err)
-			}
+		{
+			name:  "term-block",
+			input: "{ foo; bar; baz }",
+			wanted: TermBlock(Block{
+				Stmts: []Stmt{
+					StmtExpr(NewExpr(TermIdent("foo"))),
+					StmtExpr(NewExpr(TermIdent("bar"))),
+				},
+				Expr: &Expr{Head: TermIdent("baz")},
+			}),
+			parse: ParseTerm,
+		},
+		{
+			name:  "lambda-simple",
+			input: "|x| x",
+			wanted: Lambda{
+				Args: []ArgSpec{{Name: "x"}},
+				Body: NewExpr(TermIdent("x")),
+			},
+			parse: ParseLambda,
+		},
+		{
+			name:  "lambda-multi-args",
+			input: "|x, y| add x y",
+			wanted: Lambda{
+				Args: []ArgSpec{{Name: "x"}, {Name: "y"}},
+				Body: NewExpr(
+					TermIdent("add"),
+					TermIdent("x"),
+					TermIdent("y"),
+				),
+			},
+			parse: ParseLambda,
+		},
+		{
+			name:  "lambda-w-return-type",
+			input: "|x, y| -> int 5",
+			wanted: Lambda{
+				Args: []ArgSpec{{Name: "x"}, {Name: "y"}},
+				Ret:  &TypeExpr{Head: "int"},
+				Body: NewExpr(TermInt(5)),
+			},
+			parse: ParseLambda,
+		},
+		{
+			name: "lambda-w-block-expr",
+			input: `|x, y| -> int {
+				let z = add x y;
+				add z z
+			}`,
+			wanted: Lambda{
+				Args: []ArgSpec{{Name: "x"}, {Name: "y"}},
+				Ret:  &TypeExpr{Head: "int"},
+				Body: NewExpr(TermBlock(Block{
+					Stmts: []Stmt{StmtBinding(BindingDecl{
+						Binding: "z",
+						Expr: NewExpr(
+							TermIdent("add"),
+							TermIdent("x"),
+							TermIdent("y"),
+						),
+					})},
+					Expr: NewExpr(
+						TermIdent("add"),
+						TermIdent("z"),
+						TermIdent("z"),
+					).Ptr(),
+				})),
+			},
+			parse: ParseLambda,
+		},
+		{
+			name:  "lambda-w-typed-arg",
+			input: "|x: int| -> int x",
+			wanted: Lambda{
+				Args: []ArgSpec{{Name: "x", Type: &TypeExpr{Head: "int"}}},
+				Ret:  &TypeExpr{Head: "int"},
+				Body: NewExpr(TermIdent("x")),
+			},
+			parse: ParseLambda,
+		},
+		{
+			name:  "lambda-w-multiple-typed-args",
+			input: "|x: int, y: int| -> int add x y",
+			wanted: Lambda{
+				Args: []ArgSpec{
+					{Name: "x", Type: &TypeExpr{Head: "int"}},
+					{Name: "y", Type: &TypeExpr{Head: "int"}},
+				},
+				Ret: &TypeExpr{Head: "int"},
+				Body: NewExpr(
+					TermIdent("add"),
+					TermIdent("x"),
+					TermIdent("y"),
+				),
+			},
+			parse: ParseLambda,
+		},
+		{
+			name:  "term-lambda",
+			input: "|x| x",
+			wanted: TermLambda(Lambda{
+				Args: []ArgSpec{{Name: "x"}},
+				Body: NewExpr(TermIdent("x")),
+			}),
+			parse: ParseTerm,
+		},
+		{
+			name:  "expr-w-lambda",
+			input: "(|x| x) 4",
+			wanted: NewExpr(
+				TermExpr(NewExpr(TermLambda(Lambda{
+					Args: []ArgSpec{{Name: "x"}},
+					Body: NewExpr(TermIdent("x")),
+				}))),
+				TermInt(4),
+			),
+			parse: ParseExpr,
+		},
+		{
+			name:   "file-wo-imports-or-decls",
+			input:  "package main\n",
+			wanted: File{Package: "main"},
+			parse:  ParseFile,
+		},
+		{
+			name:  "file-w-decl",
+			input: "package main\nlet x = 4;",
+			wanted: File{
+				Package: "main",
+				Decls: []BindingDecl{{
+					Binding: "x",
+					Expr:    NewExpr(TermInt(4)),
+				}},
+			},
+			parse: ParseFile,
+		},
+		{
+			name:   "file-w-single-import",
+			input:  "package main\nimport (\"foo\")\n",
+			wanted: File{Package: "main", Imports: []string{"foo"}},
+			parse:  ParseFile,
+		},
+		{
+			name: "file-w-multi-imports",
+			input: `package main
 
-			if !testCase.wanted.Equal(decl) {
-				t.Fatalf(
-					"Wanted:\n%s\n\nGot:\n%s",
-					testCase.wanted.Pretty(0),
-					decl.Pretty(0),
-				)
-			}
-		})
+					import (
+						"foo"
+						"bar"
+					)
+
+					let x = 4;
+					let y = "lol";`,
+			wanted: File{
+				"main",
+				[]string{"foo", "bar"},
+				[]BindingDecl{
+					{"x", NewExpr(TermInt(4))},
+					{"y", NewExpr(TermString("lol"))},
+				},
+			},
+			parse: ParseFile,
+		},
 	}
-}
-
-func TestParseExpr(t *testing.T) {
-	testCases := []struct {
-		name      string
-		input     string
-		wanted    Expr
-		wantedErr error
-		skip      bool
-	}{{
-		name:   "ident",
-		input:  "foo",
-		wanted: ExprIdent("foo"),
-	}, {
-		name:   "str",
-		input:  `"some string"`,
-		wanted: ExprStr("some string"),
-	}, {
-		name:   "int",
-		input:  "123",
-		wanted: ExprInt(123),
-	}, {
-		name:  "bin expr eq",
-		input: "a==b",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprIdent("a"),
-			Operator: "==",
-			Right:    ExprIdent("b"),
-		}),
-	}, {
-		name:  "bin expr ne",
-		input: "1!=2",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprInt(1),
-			Operator: "!=",
-			Right:    ExprInt(2),
-		}),
-	}, {
-		name:  "bin expr gt",
-		input: `"abc">"def"`,
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprStr("abc"),
-			Operator: ">",
-			Right:    ExprStr("def"),
-		}),
-	}, {
-		name:  "bin expr lt",
-		input: `"abc"<"def"`,
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprStr("abc"),
-			Operator: "<",
-			Right:    ExprStr("def"),
-		}),
-	}, {
-		name:  "bin expr ge",
-		input: "1>=2",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprInt(1),
-			Operator: ">=",
-			Right:    ExprInt(2),
-		}),
-	}, {
-		name:  "bin expr le",
-		input: "1<=2",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprInt(1),
-			Operator: "<=",
-			Right:    ExprInt(2),
-		}),
-	}, {
-		name:  "bin expr plus",
-		input: "1+2",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprInt(1),
-			Operator: "+",
-			Right:    ExprInt(2),
-		}),
-	}, {
-		name:  "bin expr minus",
-		input: "1-2",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprInt(1),
-			Operator: "-",
-			Right:    ExprInt(2),
-		}),
-	}, {
-		name:  "bin expr multiply",
-		input: "1*2",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprInt(1),
-			Operator: "*",
-			Right:    ExprInt(2),
-		}),
-	}, {
-		name:  "bin expr divide",
-		input: "1/2",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprInt(1),
-			Operator: "/",
-			Right:    ExprInt(2),
-		}),
-	}, {
-		name:  "bin expr modulo",
-		input: "1%2",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprInt(1),
-			Operator: "%",
-			Right:    ExprInt(2),
-		}),
-	}, {
-		name:  "bin expr order of operations - multiplication > addition",
-		input: "1+2*3",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprInt(1),
-			Operator: "+",
-			Right: ExprBinExpr(&BinExpr{
-				Left:     ExprInt(2),
-				Operator: "*",
-				Right:    ExprInt(3),
-			}),
-		}),
-	}, {
-		name:  "bin expr order of operations - division > addition",
-		input: "1+2/3",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprInt(1),
-			Operator: "+",
-			Right: ExprBinExpr(&BinExpr{
-				Left:     ExprInt(2),
-				Operator: "/",
-				Right:    ExprInt(3),
-			}),
-		}),
-	}, {
-		name:  "bin expr order of operations - multiplication > subtraction",
-		input: "1-2*3",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprInt(1),
-			Operator: "-",
-			Right: ExprBinExpr(&BinExpr{
-				Left:     ExprInt(2),
-				Operator: "*",
-				Right:    ExprInt(3),
-			}),
-		}),
-	}, {
-		name:  "bin expr order of operations - division > subtraction",
-		input: "1-2/3",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprInt(1),
-			Operator: "-",
-			Right: ExprBinExpr(&BinExpr{
-				Left:     ExprInt(2),
-				Operator: "/",
-				Right:    ExprInt(3),
-			}),
-		}),
-	}, {
-		name:  "bin expr recursive",
-		skip:  true,
-		input: "1+1+1",
-		wanted: ExprBinExpr(&BinExpr{
-			Left: ExprBinExpr(&BinExpr{
-				Left:     ExprInt(1),
-				Operator: "+",
-				Right:    ExprInt(1),
-			}),
-			Operator: "+",
-			Right:    ExprInt(1),
-		}),
-	}, {
-		name:  "bin expr with unary expr left operand",
-		input: "-1+1",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprUnExpr(&UnExpr{Operator: '-', Operand: ExprInt(1)}),
-			Operator: "+",
-			Right:    ExprInt(1),
-		}),
-	}, {
-		name:  "bin expr with unary expr right operand",
-		input: "1+-1",
-		wanted: ExprBinExpr(&BinExpr{
-			Left:     ExprInt(1),
-			Operator: "+",
-			Right: ExprUnExpr(&UnExpr{
-				Operator: '-',
-				Operand:  ExprInt(1),
-			}),
-		}),
-	}, {
-		name:   "unary expr bang",
-		input:  "!1",
-		wanted: ExprUnExpr(&UnExpr{Operator: '!', Operand: ExprInt(1)}),
-	}, {
-		name:   "unary expr star",
-		input:  "*foo",
-		wanted: ExprUnExpr(&UnExpr{Operator: '*', Operand: ExprIdent("foo")}),
-	}, {
-		name:   "unary expr negate",
-		input:  "-4",
-		wanted: ExprUnExpr(&UnExpr{Operator: '-', Operand: ExprInt(4)}),
-	}, {
-		name:   "empty block expr",
-		input:  "{}",
-		wanted: ExprBlockExpr(BlockExpr{}),
-	}, {
-		name:   "simple block expr",
-		input:  "{ foo }",
-		wanted: ExprBlockExpr(BlockExpr{Expr: ExprIdent("foo").Ptr()}),
-	}, {
-		name:   "empty block expr",
-		input:  "{}",
-		wanted: ExprBlockExpr(BlockExpr{}),
-	}, {
-		name:  "block expr w only let statement",
-		input: "{let foo = bar;}",
-		wanted: ExprBlockExpr(BlockExpr{
-			Stmts: []Stmt{
-				StmtLetStmt(LetStmt{Binding: "foo", Expr: ExprIdent("bar")}),
-			},
-		}),
-	}, {
-		name:  "block expr w only expr statement",
-		input: "{bar;}",
-		wanted: ExprBlockExpr(
-			BlockExpr{Stmts: []Stmt{StmtExpr(ExprIdent("bar"))}},
-		),
-	}, {
-		name:  "block expr with multiple statements",
-		input: "{let foo = bar; bar;}",
-		wanted: ExprBlockExpr(BlockExpr{Stmts: []Stmt{
-			StmtLetStmt(LetStmt{Binding: "foo", Expr: ExprIdent("bar")}),
-			StmtExpr(ExprIdent("bar")),
-		}}),
-	}, {
-		name:  "block expr w statements and expr",
-		input: "{let foo = bar; foo}",
-		wanted: ExprBlockExpr(BlockExpr{
-			Stmts: []Stmt{
-				StmtLetStmt(LetStmt{Binding: "foo", Expr: ExprIdent("bar")}),
-			},
-			Expr: ExprIdent("foo").Ptr(),
-		}),
-	}, {
-		name:   "call expr no args",
-		input:  "foo()",
-		wanted: ExprCallExpr(&CallExpr{Callable: ExprIdent("foo")}),
-	}, {
-		name:  "call expr one arg",
-		input: "foo(bar)",
-		wanted: ExprCallExpr(&CallExpr{
-			ExprIdent("foo"),
-			[]Expr{ExprIdent("bar")},
-		}),
-	}, {
-		name:  "call expr multi args",
-		input: "foo(bar, \"abc\", 123)",
-		wanted: ExprCallExpr(&CallExpr{
-			ExprIdent("foo"),
-			[]Expr{ExprIdent("bar"), ExprStr("abc"), ExprInt(123)},
-		}),
-	}, {
-		name:  "call expr w non-ident callable",
-		input: "getGetCallable()()(bar)",
-		wanted: ExprCallExpr(&CallExpr{
-			ExprCallExpr(&CallExpr{
-				Callable: ExprCallExpr(&CallExpr{
-					Callable: ExprIdent("getGetCallable"),
-				}),
-			}),
-			[]Expr{ExprIdent("bar")},
-		}),
-	}, {
-		name:  "call expr w call expr args",
-		input: "foo(bar(baz()))",
-		wanted: ExprCallExpr(&CallExpr{
-			ExprIdent("foo"),
-			[]Expr{
-				ExprCallExpr(&CallExpr{
-					ExprIdent("bar"),
-					[]Expr{
-						ExprCallExpr(&CallExpr{Callable: ExprIdent("baz")}),
-					},
-				}),
-			},
-		}),
-	}}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			if testCase.skip {
-				fmt.Println("SKIP:", testCase.name)
-				t.SkipNow()
+			rslt := testCase.parse(testCase.input)
+			if rslt.IsErr() {
+				t.Fatal("Unexpected error:", rslt.Err)
 			}
-			expr, _, err := parseExpr(NewStringInput(testCase.input))
-			if err != testCase.wantedErr {
+			if rslt.Rest != testCase.wantedRest {
 				t.Fatalf(
-					"%s: Wanted error '%v'; got '%v'",
-					testCase.name,
-					testCase.wantedErr,
-					err,
+					"Wanted remainder: '%s', got: '%s'",
+					testCase.wantedRest.Sample(15),
+					rslt.Rest.Sample(15),
 				)
 			}
-			if !expr.Equal(testCase.wanted) {
-				t.Fatalf(
-					"%s\nWanted expr:\n%s\n\nGot expr:\n%s",
-					testCase.name,
-					testCase.wanted.Pretty(0),
-					expr.Pretty(0),
-				)
+			if !rslt.Node.Equal(testCase.wanted) {
+				t.Fatalf("Wanted:\n%s\n\nGot:\n%s", testCase.wanted, rslt.Node)
 			}
 		})
 	}

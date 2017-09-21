@@ -3,25 +3,18 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
+	"os"
 )
 
-var fileStr = `package main
-
-fn main() {
-	println("hello, world!")
-}`
-
 func main() {
-	file, _, err := parseFile(NewStringInput(fileStr))
+	data, err := ioutil.ReadFile(os.Args[1])
 	if err != nil {
-		err.Error()
-		fmt.Println(err)
+		log.Fatal(err)
 	}
-	if err := ioutil.WriteFile(
-		"/tmp/test.go",
-		[]byte(CompileFile(file)),
-		0644,
-	); err != nil {
-		fmt.Println(err)
+	r := ParseFile(Input(string(data)))
+	if r.IsErr() {
+		log.Fatal(r.Err)
 	}
+	fmt.Println(r.Node)
 }
