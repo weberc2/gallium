@@ -13,7 +13,7 @@ func (p Primitive) RenderGoIdent() string { return string(p) }
 
 func (p Primitive) Replace(map[TypeVar]Type) Type { return p }
 
-func (p Primitive) TypeRefs() []TypeRef { return nil }
+// func (p Primitive) TypeRefs() []TypeRef { return nil }
 
 func (p Primitive) EqualType(other Type) bool {
 	otherPrimitive, ok := other.(Primitive)
@@ -22,11 +22,14 @@ func (p Primitive) EqualType(other Type) bool {
 
 type ArgSpec struct {
 	Name string
-	Type Type
+	Type Type // optional
 }
 
 func (as ArgSpec) Equal(other ArgSpec) bool {
-	return as.Name == other.Name && as.Type.EqualType(other.Type)
+	if as.Type != nil {
+		return as.Name == other.Name && as.Type.EqualType(other.Type)
+	}
+	return as.Name == other.Name && other.Type == nil
 }
 
 func (as ArgSpec) RenderGo() string {
@@ -68,13 +71,13 @@ func (ts TupleSpec) RenderGo() string {
 	return "struct{" + strings.Join(args, "; ") + "}"
 }
 
-func (ts TupleSpec) TypeRefs() []TypeRef {
-	var concrete []TypeRef
-	for _, t := range ts {
-		concrete = append(concrete, t.TypeRefs()...)
-	}
-	return concrete
-}
+// func (ts TupleSpec) TypeRefs() []TypeRef {
+// 	var concrete []TypeRef
+// 	for _, t := range ts {
+// 		concrete = append(concrete, t.TypeRefs()...)
+// 	}
+// 	return concrete
+// }
 
 func (ts TupleSpec) RenderGoIdent() string {
 	typeStrings := make([]string, len(ts))
@@ -86,11 +89,11 @@ func (ts TupleSpec) RenderGoIdent() string {
 
 type FuncSpec struct {
 	Args []ArgSpec
-	Ret  Type
+	Ret  Type // optional
 }
 
 func (fs FuncSpec) Equal(other FuncSpec) bool {
-	if !fs.Ret.EqualType(other.Ret) || len(fs.Args) != len(other.Args) {
+	if len(fs.Args) != len(other.Args) {
 		return false
 	}
 	for i, arg := range fs.Args {
@@ -98,7 +101,10 @@ func (fs FuncSpec) Equal(other FuncSpec) bool {
 			return false
 		}
 	}
-	return true
+	if fs.Ret != nil {
+		return fs.Ret.EqualType(other.Ret)
+	}
+	return other.Ret == nil
 }
 
 func (fs FuncSpec) EqualType(other Type) bool {
@@ -122,13 +128,13 @@ func (fs FuncSpec) RenderGo() string {
 	return "func(" + strings.Join(args, ", ") + ") " + fs.Ret.RenderGo()
 }
 
-func (fs FuncSpec) TypeRefs() []TypeRef {
-	refs := fs.Ret.TypeRefs()
-	for _, arg := range fs.Args {
-		refs = append(refs, arg.Type.TypeRefs()...)
-	}
-	return refs
-}
+// func (fs FuncSpec) TypeRefs() []TypeRef {
+// 	refs := fs.Ret.TypeRefs()
+// 	for _, arg := range fs.Args {
+// 		refs = append(refs, arg.Type.TypeRefs()...)
+// 	}
+// 	return refs
+// }
 
 func (fs FuncSpec) RenderGoIdent() string {
 	argStrings := make([]string, len(fs.Args))
@@ -179,9 +185,9 @@ func (tr TypeRef) Replace(types map[TypeVar]Type) Type {
 	return TypeRef{Decl: tr.Decl, Arg: tr.Arg.Replace(types)}
 }
 
-func (tr TypeRef) TypeRefs() []TypeRef {
-	return append([]TypeRef{tr}, tr.Arg.TypeRefs()...)
-}
+// func (tr TypeRef) TypeRefs() []TypeRef {
+// 	return append([]TypeRef{tr}, tr.Arg.TypeRefs()...)
+// }
 
 func (tr TypeRef) RenderGo() string {
 	return tr.RenderGoLit(tr)
@@ -203,15 +209,35 @@ func (ts TupleSpec) RenderGoLit(tr TypeRef) string { return tr.RenderGoIdent() }
 
 func (p Primitive) RenderGoLit(tr TypeRef) string { return tr.RenderGoIdent() }
 
-func (tv TypeVar) RenderGoLit(tr TypeRef) string { panic("TypeVar.RenderGoLit()") }
+func (tv TypeVar) RenderGoLit(tr TypeRef) string {
+	panic("TypeVar.RenderGoLit()")
+}
 
 func (fs FuncSpec) RenderGoLit(tr TypeRef) string { return fs.RenderGo() }
 
-func (p Primitive) typeNode()  {}
-func (fs FuncSpec) typeNode()  {}
-func (ts TupleSpec) typeNode() {}
-func (tr TypeRef) typeNode()   {}
-func (tv TypeVar) typeNode()   {}
+func (p Primitive) Visit(tv TypeVisitor) {
+	tv.VisitPrimitive(p)
+}
+func (fs FuncSpec) Visit(tv TypeVisitor) {
+	tv.VisitFuncSpec(fs)
+}
+func (ts TupleSpec) Visit(tv TypeVisitor) {
+	tv.VisitTupleSpec(ts)
+}
+func (tr TypeRef) Visit(tv TypeVisitor) {
+	tv.VisitTypeRef(tr)
+}
+func (tv TypeVar) Visit(tvis TypeVisitor) {
+	tvis.VisitTypeVar(tv)
+}
+
+type TypeVisitor interface {
+	VisitPrimitive(p Primitive)
+	VisitFuncSpec(fs FuncSpec)
+	VisitTupleSpec(ts TupleSpec)
+	VisitTypeRef(tr TypeRef)
+	VisitTypeVar(tv TypeVar)
+}
 
 func (tr TypeRef) RenderGoIdent() string {
 	if tr.Arg == nil {
@@ -233,6 +259,11 @@ func (td TypeDecl) EqualDecl(other Decl) bool {
 }
 
 func (td TypeDecl) EqualNode(other Node) bool {
+	otherTypeDecl, ok := other.(TypeDecl)
+	return ok && td.Equal(otherTypeDecl)
+}
+
+func (td TypeDecl) EqualStmt(other Stmt) bool {
 	otherTypeDecl, ok := other.(TypeDecl)
 	return ok && td.Equal(otherTypeDecl)
 }
@@ -272,14 +303,15 @@ func (tv TypeVar) Replace(types map[TypeVar]Type) Type {
 func (tv TypeVar) RenderGo() string { panic("TypeVar.RenderGo()") }
 
 func (tv TypeVar) RenderGoIdent() string { panic("TypeVar.RenderGoIdent()") }
-func (tv TypeVar) TypeRefs() []TypeRef   { panic("TypeVar.TypeRefs()") }
+
+// func (tv TypeVar) TypeRefs() []TypeRef   { panic("TypeVar.TypeRefs()") }
 
 type Type interface {
-	typeNode()
+	Visit(TypeVisitor)
 	RenderGo() string
 	RenderGoIdent() string
 	RenderGoLit(TypeRef) string
-	TypeRefs() []TypeRef
+	// TypeRefs() []TypeRef
 	Replace(map[TypeVar]Type) Type
 	EqualType(other Type) bool
 }

@@ -1,9 +1,11 @@
 package parser
 
 import (
-	"github.com/weberc2/gallium/ast"
 	"reflect"
 	"testing"
+
+	"github.com/weberc2/gallium/ast"
+	"github.com/weberc2/gallium/combinator"
 
 	"github.com/kr/pretty"
 )
@@ -11,23 +13,23 @@ import (
 func TestParser(t *testing.T) {
 	testCases := []struct {
 		Name        string
-		Input       Input
-		WantedRest  Input
+		Input       combinator.Input
+		WantedRest  combinator.Input
 		WantedValue interface{}
 		WantedErr   bool
-		Parser      Parser
+		Parser      combinator.Parser
 	}{
 		{
 			Name:        "ws",
 			Input:       " \t\n",
 			WantedValue: " \t\n",
-			Parser:      WS,
+			Parser:      combinator.WS,
 		},
 		{
 			Name:        "can-ws",
 			Input:       " \t\n",
 			WantedValue: " \t\n",
-			Parser:      CanWS,
+			Parser:      combinator.CanWS,
 		},
 		{
 			Name:        "func-spec-simple",
@@ -71,8 +73,17 @@ func TestParser(t *testing.T) {
 			Parser: FuncSpec,
 		},
 		{
+			Name:  "func-spec-w-untyped-args",
+			Input: "fn(i, j)",
+			WantedValue: ast.FuncSpec{Args: []ast.ArgSpec{
+				{Name: "i"},
+				{Name: "j"},
+			}},
+			Parser: FuncSpec,
+		},
+		{
 			Name:  "type-decl-simple",
-			Input: "type foo = int;",
+			Input: "type foo = int",
 			WantedValue: ast.TypeDecl{
 				Name: "foo",
 				Type: ast.TypeRef{Name: "int"},
@@ -81,7 +92,7 @@ func TestParser(t *testing.T) {
 		},
 		{
 			Name:  "type-decl-generic",
-			Input: "type foo a b = bar a b;",
+			Input: "type foo a b = bar a b",
 			WantedValue: ast.TypeDecl{
 				Name: "foo",
 				Type: ast.TypeRef{
@@ -94,7 +105,7 @@ func TestParser(t *testing.T) {
 		},
 		{
 			Name:  "type-decl-generic-tuple",
-			Input: "type foo a b = (int, a, b);",
+			Input: "type foo a b = (int, a, b)",
 			WantedValue: ast.TypeDecl{
 				Name: "foo",
 				Type: ast.TupleSpec{
@@ -108,7 +119,7 @@ func TestParser(t *testing.T) {
 		},
 		{
 			Name:  "type-decl-simple-function",
-			Input: "type Parser = fn(input Input) -> Result;",
+			Input: "type Parser = fn(input Input) -> Result",
 			WantedValue: ast.TypeDecl{
 				Name: "Parser",
 				Type: ast.FuncSpec{
@@ -119,6 +130,239 @@ func TestParser(t *testing.T) {
 				},
 			},
 			Parser: TypeDecl,
+		},
+		{
+			Name:        "string-lit-empty",
+			Input:       `""`,
+			WantedValue: ast.StringLit(""),
+			Parser:      StringLit,
+		},
+		{
+			Name:        "string-lit-non-empty",
+			Input:       `"abc"`,
+			WantedValue: ast.StringLit("abc"),
+			Parser:      StringLit,
+		},
+		{
+			Name:        "int-lit",
+			Input:       "10",
+			WantedValue: ast.IntLit(10),
+			Parser:      IntLit,
+		},
+		{
+			Name:        "ident-one-char",
+			Input:       "f",
+			WantedValue: ast.Ident("f"),
+			Parser:      Ident,
+		},
+		{
+			Name:        "ident-one-char-underscore",
+			Input:       "_",
+			WantedValue: ast.Ident("_"),
+			Parser:      Ident,
+		},
+		{
+			Name:        "ident-many-chars",
+			Input:       "_foo123",
+			WantedValue: ast.Ident("_foo123"),
+			Parser:      Ident,
+		},
+		{
+			Name:        "tuple-lit-empty",
+			Input:       "()",
+			WantedValue: ast.TupleLit{},
+			Parser:      TupleLit,
+		},
+		{
+			Name:        "tuple-lit-single-elt",
+			Input:       "(a)",
+			WantedValue: ast.TupleLit{ast.Expr{Node: ast.Ident("a")}},
+			Parser:      TupleLit,
+		},
+		{
+			Name:  "let-decl-no-type",
+			Input: "let x = 42",
+			WantedValue: ast.LetDecl{
+				ast.Ident("x"),
+				ast.Expr{Node: ast.IntLit(42)},
+			},
+			Parser: LetDecl,
+		},
+		{
+			Name:        "block-empty",
+			Input:       "{}",
+			WantedValue: ast.Block{},
+			Parser:      Block,
+		},
+		{
+			Name:        "block-lone-expr",
+			Input:       "{ 42 }",
+			WantedValue: ast.Block{Expr: ast.Expr{Node: ast.IntLit(42)}},
+			Parser:      Block,
+		},
+		{
+			Name:        "block-nested",
+			Input:       "{ {} }",
+			WantedValue: ast.Block{Expr: ast.Expr{Node: ast.Block{}}},
+			Parser:      Block,
+		},
+		{
+			Name:  "block-w-let-stmt",
+			Input: "{ let x = 42; }",
+			WantedValue: ast.Block{Stmts: []ast.Stmt{ast.LetDecl{
+				ast.Ident("x"),
+				ast.Expr{Node: ast.IntLit(42)},
+			}}},
+			Parser: Block,
+		},
+		{
+			Name:  "call",
+			Input: "foo bar",
+			WantedValue: ast.Call{
+				Fn:  ast.Expr{Node: ast.Ident("foo")},
+				Arg: ast.Expr{Node: ast.Ident("bar")},
+			},
+			Parser: Call,
+		},
+		{
+			Name:        "func-lit-int-body",
+			Input:       "() => 4",
+			WantedValue: ast.FuncLit{Body: ast.Expr{Node: ast.IntLit(4)}},
+			Parser:      FuncLit,
+		},
+		{
+			Name:  "func-lit-tuple-body",
+			Input: `() => (a, 4, "")`,
+			WantedValue: ast.FuncLit{Body: ast.Expr{Node: ast.TupleLit{
+				ast.Expr{Node: ast.Ident("a")},
+				ast.Expr{Node: ast.IntLit(4)},
+				ast.Expr{Node: ast.StringLit("")},
+			}}},
+			Parser: FuncLit,
+		},
+		{
+			Name:  "func-lit-block-body",
+			Input: "(): int => { 42 }",
+			WantedValue: ast.FuncLit{
+				Spec: ast.FuncSpec{Ret: ast.TypeRef{Name: "int"}},
+				Body: ast.Expr{Node: ast.Block{Expr: ast.Expr{
+					Node: ast.IntLit(42),
+				}}},
+			},
+			Parser: FuncLit,
+		},
+		{
+			Name:  "tuple-lit-multi-elt",
+			Input: "(a, b, c)",
+			WantedValue: ast.TupleLit{
+				ast.Expr{Node: ast.Ident("a")},
+				ast.Expr{Node: ast.Ident("b")},
+				ast.Expr{Node: ast.Ident("c")},
+			},
+			Parser: TupleLit,
+		},
+		{
+			Name:  "tuple-lit-many-simple-exprs",
+			Input: `(1, "a", foo)`,
+			WantedValue: ast.TupleLit{
+				ast.Expr{Node: ast.IntLit(1)},
+				ast.Expr{Node: ast.StringLit("a")},
+				ast.Expr{Node: ast.Ident("foo")},
+			},
+			Parser: TupleLit,
+		},
+		{
+			Name:  "tuple-lit-nested",
+			Input: "((foo))",
+			WantedValue: ast.TupleLit{ast.Expr{Node: ast.TupleLit{ast.Expr{
+				Node: ast.Ident("foo"),
+			}}}},
+			Parser: TupleLit,
+		},
+		{
+			Name:        "expr-int-lit",
+			Input:       "25",
+			WantedValue: ast.Expr{Node: ast.IntLit(25)},
+			Parser:      Expr,
+		},
+		{
+			Name:        "expr-string-lit",
+			Input:       `"abcd"`,
+			WantedValue: ast.Expr{Node: ast.StringLit("abcd")},
+			Parser:      Expr,
+		},
+		{
+			Name:  "expr-tuple-lit",
+			Input: "(foo)",
+			WantedValue: ast.Expr{Node: ast.TupleLit{
+				ast.Expr{Node: ast.Ident("foo")},
+			}},
+			Parser: Expr,
+		},
+		{
+			Name:  "expr-block",
+			Input: "{ 42 }",
+			WantedValue: ast.Expr{Node: ast.Block{Expr: ast.Expr{
+				Node: ast.IntLit(42),
+			}}},
+			Parser: Expr,
+		},
+		{
+			Name:  "expr-call",
+			Input: "foo 42",
+			WantedValue: ast.Expr{Node: ast.Call{
+				ast.Expr{Node: ast.Ident("foo")},
+				ast.Expr{Node: ast.IntLit(42)},
+			}},
+			Parser: Expr,
+		},
+		{
+			Name:  "expr-func-lit",
+			Input: "(a) => addOne a",
+			WantedValue: ast.Expr{Node: ast.FuncLit{
+				ast.FuncSpec{Args: []ast.ArgSpec{{Name: "a"}}},
+				ast.Expr{Node: ast.Call{
+					ast.Expr{Node: ast.Ident("addOne")},
+					ast.Expr{Node: ast.Ident("a")},
+				}},
+			}},
+			Parser: Expr,
+		},
+		{
+			Name:  "decl-type-decl",
+			Input: "type foo = int",
+			WantedValue: ast.TypeDecl{
+				Name: "foo",
+				Type: ast.TypeRef{Name: "int"},
+			},
+			Parser: Decl,
+		},
+		{
+			Name:  "decl-let-decl",
+			Input: "let x = 0",
+			WantedValue: ast.LetDecl{
+				ast.Ident("x"),
+				ast.Expr{Node: ast.IntLit(0)},
+			},
+			Parser: Decl,
+		},
+		{
+			Name:  "stmt-decl",
+			Input: "let x = 0;",
+			WantedValue: ast.LetDecl{
+				ast.Ident("x"),
+				ast.Expr{Node: ast.IntLit(0)},
+			},
+			Parser: Stmt,
+		},
+		{
+			Name:  "stmt-expr",
+			Input: `println "Hello, world!";`,
+			WantedValue: ast.Expr{Node: ast.Call{
+				ast.Expr{Node: ast.Ident("println")},
+				ast.Expr{Node: ast.StringLit("Hello, world!")},
+			}},
+			Parser: Stmt,
 		},
 		{
 			Name:        "file-empty",
@@ -139,7 +383,7 @@ func TestParser(t *testing.T) {
 					type foo = int;`,
 			WantedValue: ast.File{
 				Package: "main",
-				Decls: []ast.Decl{ast.TypeDecl{
+				Stmts: []ast.Stmt{ast.TypeDecl{
 					Name: "foo",
 					Type: ast.TypeRef{Name: "int"},
 				}},
@@ -155,9 +399,38 @@ func TestParser(t *testing.T) {
 					type y = bar;`,
 			WantedValue: ast.File{
 				Package: "main",
-				Decls: []ast.Decl{
+				Stmts: []ast.Stmt{
 					ast.TypeDecl{Name: "x", Type: ast.TypeRef{Name: "foo"}},
 					ast.TypeDecl{Name: "y", Type: ast.TypeRef{Name: "bar"}},
+				},
+			},
+			Parser: File,
+		},
+		{
+			Name: "file-w-type-and-let-decls",
+			Input: `package main
+
+					type X = Foo;
+
+					let main = () => { println "Hello, world"; };
+					`,
+			WantedValue: ast.File{
+				Package: "main",
+				Stmts: []ast.Stmt{
+					ast.TypeDecl{Name: "X", Type: ast.TypeRef{Name: "Foo"}},
+					ast.LetDecl{
+						ast.Ident("main"),
+						ast.Expr{Node: ast.FuncLit{
+							Body: ast.Expr{Node: ast.Block{
+								Stmts: []ast.Stmt{ast.Expr{Node: ast.Call{
+									ast.Expr{Node: ast.Ident("println")},
+									ast.Expr{
+										Node: ast.StringLit("Hello, world"),
+									},
+								}}},
+							}},
+						}},
+					},
 				},
 			},
 			Parser: File,

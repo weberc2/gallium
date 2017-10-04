@@ -2,15 +2,15 @@ package ast
 
 type File struct {
 	Package string
-	Decls   []Decl
+	Stmts   []Stmt
 }
 
 func (f File) Equal(other File) bool {
-	if len(f.Decls) != len(other.Decls) {
+	if len(f.Stmts) != len(other.Stmts) {
 		return false
 	}
-	for i, decl := range f.Decls {
-		if !decl.EqualDecl(other.Decls[i]) {
+	for i, stmt := range f.Stmts {
+		if !stmt.EqualStmt(other.Stmts[i]) {
 			return false
 		}
 	}

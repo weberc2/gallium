@@ -1,4 +1,4 @@
-package parser
+package combinator
 
 import (
 	"fmt"
@@ -424,12 +424,12 @@ var (
 		}).
 		Rename("Int")
 
-	// Ident is a parser that matches identifiers in source code
+	// Ident is a parser that matches identifiers in source code. Identifiers
+	// must be at least one character long. The first character must be either
+	// an underscore or a letter, and subsequent characters may be any of
+	// underscore, letter, or digit.
 	Ident = Seq(
-		Any(
-			Lit('_'),
-			IsClass(UnicodeClassLetter),
-		),
+		Any(Lit('_'), IsClass(UnicodeClassLetter)),
 		Repeat(Any(
 			Lit('_'),
 			IsClass(UnicodeClassLetter),

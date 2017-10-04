@@ -2,25 +2,38 @@ package parser
 
 import (
 	"github.com/weberc2/gallium/ast"
+	"github.com/weberc2/gallium/combinator"
 )
 
-func List(p Parser, delim Parser) Parser {
-	return Seq(p, Repeat(Seq(delim, p).Get(1))).MapSlice(
+func List(p combinator.Parser, delim combinator.Parser) combinator.Parser {
+	return combinator.Seq(
+		p,
+		combinator.Repeat(combinator.Seq(delim, p).Get(1)),
+	).MapSlice(
 		func(vs []interface{}) interface{} {
 			return append([]interface{}{vs[0]}, vs[1].([]interface{})...)
 		},
 	).Rename("List")
 }
 
-func Ref(p *Parser) Parser {
-	return func(input Input) Result { return (*p)(input) }
+func Ref(p *combinator.Parser) combinator.Parser {
+	return func(input combinator.Input) combinator.Result {
+		return (*p)(input)
+	}
 }
 
-func TupleSpec(input Input) Result {
-	return Seq(
-		Lit('('),
-		List(Type, Seq(CanWS, Lit(','), CanWS)),
-		Lit(')'),
+func TupleSpec(input combinator.Input) combinator.Result {
+	return combinator.Seq(
+		combinator.Lit('('),
+		List(
+			Type,
+			combinator.Seq(
+				combinator.CanWS,
+				combinator.Lit(','),
+				combinator.CanWS,
+			),
+		),
+		combinator.Lit(')'),
 	).Get(1).MapSlice(
 		func(vs []interface{}) interface{} {
 			ts := make(ast.TupleSpec, len(vs))
@@ -32,8 +45,11 @@ func TupleSpec(input Input) Result {
 	).Wrap()(input)
 }
 
-func TypeExpr(input Input) Result {
-	return Seq(Ident, Opt(Seq(WS, Type).Get(1))).MapSlice(
+func TypeExpr(input combinator.Input) combinator.Result {
+	return combinator.Seq(
+		combinator.Ident,
+		combinator.Opt(combinator.Seq(combinator.WS, Type).Get(1)),
+	).MapSlice(
 		func(vs []interface{}) interface{} {
 			var arg ast.Type
 			if vs[1] != nil {
@@ -44,18 +60,30 @@ func TypeExpr(input Input) Result {
 	).Wrap()(input)
 }
 
-func Type(input Input) Result {
-	return Any(FuncSpec, TypeExpr, TupleSpec).Wrap()(input)
+func Type(input combinator.Input) combinator.Result {
+	return combinator.Any(FuncSpec, TypeExpr, TupleSpec).Wrap()(input)
 }
 
-func FuncSpec(input Input) Result {
-	return Seq(
-		StrLit("fn"), // 0
-		CanWS,        // 1
-		Lit('('),     // 2
-		Opt(List(ArgSpec, Seq(CanWS, Lit(','), CanWS))), // 3
-		Lit(')'), // 4
-		Opt(Seq(CanWS, StrLit("->"), CanWS, Type).Get(3)), // 5
+func FuncSpec(input combinator.Input) combinator.Result {
+	return combinator.Seq(
+		combinator.StrLit("fn"), // 0
+		combinator.CanWS,        // 1
+		combinator.Lit('('),     // 2
+		combinator.Opt(List(
+			ArgSpec,
+			combinator.Seq(
+				combinator.CanWS,
+				combinator.Lit(','),
+				combinator.CanWS,
+			),
+		)), // 3
+		combinator.Lit(')'), // 4
+		combinator.Opt(combinator.Seq(
+			combinator.CanWS,
+			combinator.StrLit("->"),
+			combinator.CanWS,
+			Type,
+		).Get(3)), // 5
 	).MapSlice(func(vs []interface{}) interface{} {
 		var args []ast.ArgSpec
 		if vs[3] != nil {
@@ -73,49 +101,219 @@ func FuncSpec(input Input) Result {
 	}).Wrap()(input)
 }
 
-func TypeAtom(input Input) Result {
-	return Any(
-		TupleSpec,
-		FuncSpec,
-		Ident.Map(func(v interface{}) interface{} {
-			return ast.TypeRef{Name: v.(string)}
-		}),
-	).Wrap()(input)
-}
-
-func ArgSpec(input Input) Result {
-	return Seq(Ident, WS, Type).MapSlice(
+func ArgSpec(input combinator.Input) combinator.Result {
+	return combinator.Seq(
+		combinator.Ident,
+		combinator.Opt(combinator.Seq(combinator.WS, Type).Get(1)),
+	).MapSlice(
 		func(vs []interface{}) interface{} {
-			return ast.ArgSpec{Name: vs[0].(string), Type: vs[2].(ast.Type)}
+			var typ ast.Type
+			if vs[1] != nil {
+				typ = vs[1].(ast.Type)
+			}
+			return ast.ArgSpec{Name: vs[0].(string), Type: typ}
 		},
 	).Wrap()(input)
 }
 
+func ExprList(input combinator.Input) combinator.Result {
+	return combinator.Seq(
+		Expr,
+		combinator.Opt(combinator.Seq(
+			combinator.CanWS,
+			combinator.Lit(','),
+			combinator.CanWS,
+			ExprList,
+		).Get(3)),
+	).MapSlice(func(vs []interface{}) interface{} {
+		var tail []ast.Expr
+		if vs[1] != nil {
+			tail = vs[1].([]ast.Expr)
+		}
+		return append([]ast.Expr{vs[0].(ast.Expr)}, tail...)
+	}).Wrap()(input)
+}
+
+func Atom(input combinator.Input) combinator.Result {
+	return combinator.Any(TupleLit, Ident, IntLit, StringLit).Map(
+		func(v interface{}) interface{} {
+			return ast.Expr{Node: v.(ast.ExprNode)}
+		},
+	).Rename("Atom")(input)
+}
+
+func Expr(input combinator.Input) combinator.Result {
+	return combinator.Any(
+		combinator.Any(Block, Call, FuncLit).Map(
+			func(v interface{}) interface{} {
+				return ast.Expr{Node: v.(ast.ExprNode)}
+			},
+		),
+		Atom,
+	).Wrap()(input)
+}
+
+func TupleLit(input combinator.Input) combinator.Result {
+	return combinator.Seq(
+		combinator.Lit('('),
+		combinator.Opt(combinator.Seq(combinator.CanWS, ExprList).Get(1)),
+		combinator.CanWS,
+		combinator.Lit(')'),
+	).Get(1).Map(func(v interface{}) interface{} {
+		if v == nil {
+			return ast.TupleLit{}
+		}
+		return ast.TupleLit(v.([]ast.Expr))
+	}).Wrap()(input)
+}
+
+func Block(input combinator.Input) combinator.Result {
+	return combinator.Seq(
+		combinator.Lit('{'),
+		combinator.CanWS,
+		combinator.Repeat(combinator.Seq(
+			Stmt,
+			combinator.CanWS,
+		).Get(0)).MapSlice(func(vs []interface{}) interface{} {
+			var stmts []ast.Stmt
+			for _, v := range vs {
+				stmts = append(stmts, v.(ast.Stmt))
+			}
+			return stmts
+		}),
+		combinator.Opt(combinator.Seq(Expr, combinator.CanWS).Get(0)),
+		combinator.Lit('}'),
+	).MapSlice(func(vs []interface{}) interface{} {
+		var expr ast.Expr
+		if vs[3] != nil {
+			expr = vs[3].(ast.Expr)
+		}
+		return ast.Block{Stmts: vs[2].([]ast.Stmt), Expr: expr}
+	}).Wrap()(input)
+}
+
+func Call(input combinator.Input) combinator.Result {
+	return combinator.Seq(Atom, combinator.WS, Expr).MapSlice(
+		func(vs []interface{}) interface{} {
+			return ast.Call{
+				Fn:  vs[0].(ast.Expr),
+				Arg: vs[2].(ast.Expr),
+			}
+		},
+	).Wrap()(input)
+}
+
+func FuncLit(input combinator.Input) combinator.Result {
+	return combinator.Seq(
+		combinator.Lit('('), // 0
+		combinator.CanWS,    // 1
+		combinator.Opt(
+			List(
+				ArgSpec,
+				combinator.Seq(
+					combinator.CanWS,
+					combinator.Lit(','),
+					combinator.CanWS,
+				),
+			).MapSlice(func(vs []interface{}) interface{} {
+				args := make([]ast.ArgSpec, len(vs))
+				for i, v := range vs {
+					args[i] = v.(ast.ArgSpec)
+				}
+				return args
+			}),
+		).Map(func(v interface{}) interface{} {
+			var args []ast.ArgSpec
+			if v == nil {
+				return args
+			}
+			return v
+		}), // 2
+		combinator.Lit(')'), // 3
+		combinator.Opt(combinator.Seq(
+			combinator.CanWS,       // 4.0
+			combinator.StrLit(":"), // 4.1
+			combinator.CanWS,       // 4.2
+			Type,                   // 4.3
+		).Get(3)), // 4
+		combinator.CanWS,        // 5
+		combinator.StrLit("=>"), // 6
+		combinator.CanWS,        // 7
+		Expr,                    // 8
+	).MapSlice(
+		func(vs []interface{}) interface{} {
+			var ret ast.Type
+			if vs[4] != nil {
+				ret = vs[4].(ast.Type)
+			}
+			return ast.FuncLit{
+				Spec: ast.FuncSpec{
+					Args: vs[2].([]ast.ArgSpec),
+					Ret:  ret,
+				},
+				Body: vs[8].(ast.Expr),
+			}
+		},
+	).Wrap()(input)
+}
+
+func LetDecl(input combinator.Input) combinator.Result {
+	return combinator.Seq(
+		combinator.StrLit("let"), // 0
+		combinator.WS,            // 1
+		Ident,                    // 2
+		combinator.CanWS,         // 3
+		combinator.Lit('='),      // 4
+		combinator.CanWS,         // 5
+		Expr,                     // 6
+	).MapSlice(func(vs []interface{}) interface{} {
+		return ast.LetDecl{vs[2].(ast.Ident), vs[6].(ast.Expr)}
+	}).Wrap()(input)
+}
+
+func Decl(input combinator.Input) combinator.Result {
+	return combinator.Any(LetDecl, TypeDecl).Wrap()(input)
+}
+
+func Stmt(input combinator.Input) combinator.Result {
+	return combinator.Seq(
+		combinator.Any(Decl, Expr),
+		combinator.EOS,
+	).Get(0).Wrap()(input)
+}
+
 var (
-	TypeLit = Any(
-		Ident.Map(func(v interface{}) interface{} {
+	TypeLit = combinator.Any(
+		combinator.Ident.Map(func(v interface{}) interface{} {
 			return ast.TypeRef{Name: v.(string)}
 		}),
 		TupleSpec,
 		FuncSpec,
-	)
+	).Rename("TypeLit")
 
-	TypeDecl = Seq(
-		StrLit("type"), // 0
-		WS,             // 1
-		Seq(Ident, Repeat(Seq(WS, Ident).Get(1))), // 2
-		CanWS,    // 3
-		Lit('='), // 4
-		CanWS,    // 5
-		Type,     // 6
-		EOS,      // 7
+	TypeDecl = combinator.Seq(
+		combinator.StrLit("type"), // 0
+		combinator.WS,             // 1
+		combinator.Seq(
+			combinator.Ident,
+			combinator.Repeat(
+				combinator.Seq(combinator.WS, combinator.Ident).Get(1),
+			),
+		), // 2
+		combinator.CanWS,    // 3
+		combinator.Lit('='), // 4
+		combinator.CanWS,    // 5
+		Type,                // 6
 	).MapSlice(func(vs []interface{}) interface{} {
 		typeExpr := vs[2].([]interface{})
 
 		argNodes := typeExpr[1].([]interface{})
-		args := make([]ast.TypeVar, len(argNodes))
-		for i, v := range argNodes {
-			args[i] = ast.TypeVar(v.(string))
+		var args []ast.TypeVar
+		if len(argNodes) > 0 {
+			args = make([]ast.TypeVar, len(argNodes))
+			for i, v := range argNodes {
+				args[i] = ast.TypeVar(v.(string))
+			}
 		}
 
 		return ast.TypeDecl{
@@ -125,19 +323,36 @@ var (
 		}
 	}).Rename("TypeDecl")
 
-	File = Seq(
-		StrLit("package"), // 0
-		WS,                // 1
-		Ident,             // 2
-		Repeat(Seq(CanWS, TypeDecl).Get(1)), // 3
-		CanWS, // 4
-		EOF,   // 5
+	IntLit = combinator.Int.Map(func(v interface{}) interface{} {
+		return ast.IntLit(v.(int))
+	}).Rename("IntLit")
+
+	StringLit = combinator.String.Map(func(v interface{}) interface{} {
+		return ast.StringLit(v.(string))
+	}).Rename("StringLit")
+
+	// FuncLit = Seq(FuncSpec, WS, Expr)
+
+	Ident = combinator.Ident.Map(func(v interface{}) interface{} {
+		return ast.Ident(v.(string))
+	}).Rename("Ident")
+
+	File = combinator.Seq(
+		combinator.StrLit("package"), // 0
+		combinator.WS,                // 1
+		combinator.Ident,             // 2
+		combinator.Repeat(combinator.Seq(
+			combinator.CanWS,
+			Stmt,
+		).Get(1)), // 3
+		combinator.CanWS, // 4
+		combinator.EOF,   // 5
 	).MapSlice(func(vs []interface{}) interface{} {
-		declNodes := vs[3].([]interface{})
-		decls := make([]ast.Decl, len(declNodes))
-		for i, v := range declNodes {
-			decls[i] = v.(ast.TypeDecl)
+		stmtNodes := vs[3].([]interface{})
+		stmts := make([]ast.Stmt, len(stmtNodes))
+		for i, v := range stmtNodes {
+			stmts[i] = v.(ast.Stmt)
 		}
-		return ast.File{Package: vs[2].(string), Decls: decls}
+		return ast.File{Package: vs[2].(string), Stmts: stmts}
 	}).Rename("File")
 )
