@@ -31,56 +31,56 @@ func TestParser(t *testing.T) {
 			WantedValue: " \t\n",
 			Parser:      combinator.CanWS,
 		},
-		{
-			Name:        "func-spec-simple",
-			Input:       "fn()",
-			WantedValue: ast.FuncSpec{},
-			Parser:      FuncSpec,
-		},
-		{
-			Name:        "func-spec-no-args-w-ret",
-			Input:       "fn() -> int",
-			WantedValue: ast.FuncSpec{Ret: ast.TypeRef{Name: "int"}},
-			Parser:      FuncSpec,
-		},
-		{
-			Name:  "func-spec-one-arg-no-ret",
-			Input: "fn(i int)",
-			WantedValue: ast.FuncSpec{Args: []ast.ArgSpec{
-				{"i", ast.TypeRef{Name: "int"}},
-			}},
-			Parser: FuncSpec,
-		},
-		{
-			Name:  "func-spec-multi-args-no-ret",
-			Input: "fn(i int, j int)",
-			WantedValue: ast.FuncSpec{Args: []ast.ArgSpec{
-				{"i", ast.TypeRef{Name: "int"}},
-				{"j", ast.TypeRef{Name: "int"}},
-			}},
-			Parser: FuncSpec,
-		},
-		{
-			Name:  "func-spec-multi-args-w-ret",
-			Input: "fn(i int, j int) -> bool",
-			WantedValue: ast.FuncSpec{
-				Args: []ast.ArgSpec{
-					{"i", ast.TypeRef{Name: "int"}},
-					{"j", ast.TypeRef{Name: "int"}},
-				},
-				Ret: ast.TypeRef{Name: "bool"},
-			},
-			Parser: FuncSpec,
-		},
-		{
-			Name:  "func-spec-w-untyped-args",
-			Input: "fn(i, j)",
-			WantedValue: ast.FuncSpec{Args: []ast.ArgSpec{
-				{Name: "i"},
-				{Name: "j"},
-			}},
-			Parser: FuncSpec,
-		},
+		// {
+		// 	Name:        "func-spec-simple",
+		// 	Input:       "fn()",
+		// 	WantedValue: ast.FuncSpec{},
+		// 	Parser:      FuncSpec,
+		// },
+		// {
+		// 	Name:        "func-spec-no-args-w-ret",
+		// 	Input:       "fn() -> int",
+		// 	WantedValue: ast.FuncSpec{Ret: ast.TypeRef{Name: "int"}},
+		// 	Parser:      FuncSpec,
+		// },
+		// {
+		// 	Name:  "func-spec-one-arg-no-ret",
+		// 	Input: "fn(i int)",
+		// 	WantedValue: ast.FuncSpec{
+		// 		Arg: ast.ArgSpec{"i", ast.TypeRef{Name: "int"}},
+		// 	},
+		// 	Parser: FuncSpec,
+		// },
+		// {
+		// 	Name:  "func-spec-multi-args-no-ret",
+		// 	Input: "fn(i int, j int)",
+		// 	WantedValue: ast.FuncSpec{Args: []ast.ArgSpec{
+		// 		{"i", ast.TypeRef{Name: "int"}},
+		// 		{"j", ast.TypeRef{Name: "int"}},
+		// 	}},
+		// 	Parser: FuncSpec,
+		// },
+		// {
+		// 	Name:  "func-spec-multi-args-w-ret",
+		// 	Input: "fn(i int, j int) -> bool",
+		// 	WantedValue: ast.FuncSpec{
+		// 		Args: []ast.ArgSpec{
+		// 			{"i", ast.TypeRef{Name: "int"}},
+		// 			{"j", ast.TypeRef{Name: "int"}},
+		// 		},
+		// 		Ret: ast.TypeRef{Name: "bool"},
+		// 	},
+		// 	Parser: FuncSpec,
+		// },
+		// {
+		// 	Name:  "func-spec-w-untyped-args",
+		// 	Input: "fn(i, j)",
+		// 	WantedValue: ast.FuncSpec{Args: []ast.ArgSpec{
+		// 		{Name: "i"},
+		// 		{Name: "j"},
+		// 	}},
+		// 	Parser: FuncSpec,
+		// },
 		{
 			Name:  "type-decl-simple",
 			Input: "type foo = int",
@@ -117,20 +117,20 @@ func TestParser(t *testing.T) {
 			},
 			Parser: TypeDecl,
 		},
-		{
-			Name:  "type-decl-simple-function",
-			Input: "type Parser = fn(input Input) -> Result",
-			WantedValue: ast.TypeDecl{
-				Name: "Parser",
-				Type: ast.FuncSpec{
-					Args: []ast.ArgSpec{
-						{Name: "input", Type: ast.TypeRef{Name: "Input"}},
-					},
-					Ret: ast.TypeRef{Name: "Result"},
-				},
-			},
-			Parser: TypeDecl,
-		},
+		// {
+		// 	Name:  "type-decl-simple-function",
+		// 	Input: "type Parser = fn(input Input) -> Result",
+		// 	WantedValue: ast.TypeDecl{
+		// 		Name: "Parser",
+		// 		Type: ast.FuncSpec{
+		// 			Args: []ast.ArgSpec{
+		// 				{Name: "input", Type: ast.TypeRef{Name: "Input"}},
+		// 			},
+		// 			Ret: ast.TypeRef{Name: "Result"},
+		// 		},
+		// 	},
+		// 	Parser: TypeDecl,
+		// },
 		{
 			Name:        "string-lit-empty",
 			Input:       `""`,
@@ -175,7 +175,7 @@ func TestParser(t *testing.T) {
 		},
 		{
 			Name:        "tuple-lit-single-elt",
-			Input:       "(a)",
+			Input:       "(a,)",
 			WantedValue: ast.TupleLit{ast.Expr{Node: ast.Ident("a")}},
 			Parser:      TupleLit,
 		},
@@ -225,26 +225,56 @@ func TestParser(t *testing.T) {
 			Parser: Call,
 		},
 		{
-			Name:        "func-lit-int-body",
-			Input:       "() => 4",
-			WantedValue: ast.FuncLit{Body: ast.Expr{Node: ast.IntLit(4)}},
-			Parser:      FuncLit,
+			Name:  "call-multi-arg",
+			Input: "add 1 2",
+			WantedValue: ast.Call{
+				Fn: ast.Expr{Node: ast.Call{
+					Fn:  ast.Expr{Node: ast.Ident("add")},
+					Arg: ast.Expr{Node: ast.IntLit(1)},
+				}},
+				Arg: ast.Expr{Node: ast.IntLit(2)},
+			},
+			Parser: Call,
+		},
+		{
+			Name:  "call-multi-arg-first-arg-ident",
+			Input: "add x y",
+			WantedValue: ast.Call{
+				Fn: ast.Expr{Node: ast.Call{
+					Fn:  ast.Expr{Node: ast.Ident("add")},
+					Arg: ast.Expr{Node: ast.Ident("x")},
+				}},
+				Arg: ast.Expr{Node: ast.Ident("y")},
+			},
+			Parser: Call,
+		},
+		{
+			Name:  "func-lit-int-body",
+			Input: "_ -> 4",
+			WantedValue: ast.FuncLit{
+				Arg:  "_",
+				Body: ast.Expr{Node: ast.IntLit(4)},
+			},
+			Parser: FuncLit,
 		},
 		{
 			Name:  "func-lit-tuple-body",
-			Input: `() => (a, 4, "")`,
-			WantedValue: ast.FuncLit{Body: ast.Expr{Node: ast.TupleLit{
-				ast.Expr{Node: ast.Ident("a")},
-				ast.Expr{Node: ast.IntLit(4)},
-				ast.Expr{Node: ast.StringLit("")},
-			}}},
+			Input: `_ -> (a, 4, "")`,
+			WantedValue: ast.FuncLit{
+				Arg: "_",
+				Body: ast.Expr{Node: ast.TupleLit{
+					ast.Expr{Node: ast.Ident("a")},
+					ast.Expr{Node: ast.IntLit(4)},
+					ast.Expr{Node: ast.StringLit("")},
+				}},
+			},
 			Parser: FuncLit,
 		},
 		{
 			Name:  "func-lit-block-body",
-			Input: "(): int => { 42 }",
+			Input: "x -> { 42 }",
 			WantedValue: ast.FuncLit{
-				Spec: ast.FuncSpec{Ret: ast.TypeRef{Name: "int"}},
+				Arg: ast.Ident("x"),
 				Body: ast.Expr{Node: ast.Block{Expr: ast.Expr{
 					Node: ast.IntLit(42),
 				}}},
@@ -318,9 +348,9 @@ func TestParser(t *testing.T) {
 		},
 		{
 			Name:  "expr-func-lit",
-			Input: "(a) => addOne a",
+			Input: "a -> addOne a",
 			WantedValue: ast.Expr{Node: ast.FuncLit{
-				ast.FuncSpec{Args: []ast.ArgSpec{{Name: "a"}}},
+				ast.Ident("a"),
 				ast.Expr{Node: ast.Call{
 					ast.Expr{Node: ast.Ident("addOne")},
 					ast.Expr{Node: ast.Ident("a")},
@@ -412,7 +442,7 @@ func TestParser(t *testing.T) {
 
 					type X = Foo;
 
-					let main = () => { println "Hello, world"; };
+					let main = _ -> { println "Hello, world"; };
 					`,
 			WantedValue: ast.File{
 				Package: "main",
@@ -421,6 +451,7 @@ func TestParser(t *testing.T) {
 					ast.LetDecl{
 						ast.Ident("main"),
 						ast.Expr{Node: ast.FuncLit{
+							Arg: "_",
 							Body: ast.Expr{Node: ast.Block{
 								Stmts: []ast.Stmt{ast.Expr{Node: ast.Call{
 									ast.Expr{Node: ast.Ident("println")},

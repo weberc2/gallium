@@ -7,19 +7,19 @@ import (
 
 const indent = "    "
 
+var Unit = Expr{Node: TupleLit{}, Type: TupleSpec{}}
+
 type FuncLit struct {
-	Spec FuncSpec
+	Arg  Ident
 	Body Expr
 }
-
-type TupleLit []Expr
 
 func (fl FuncLit) RenderGo(t Type) string {
 	return t.RenderGo() + " { return " + fl.Body.RenderGo() + " }"
 }
 
 func (fl FuncLit) Equal(other FuncLit) bool {
-	return fl.Spec.Equal(other.Spec) && fl.Body.Equal(other.Body)
+	return fl.Arg == other.Arg && fl.Body.Equal(other.Body)
 }
 
 func (fl FuncLit) EqualExprNode(other ExprNode) bool {
@@ -27,9 +27,9 @@ func (fl FuncLit) EqualExprNode(other ExprNode) bool {
 	return ok && fl.Equal(otherFuncLit)
 }
 
-// func (fl FuncLit) TypeRefs() []TypeRef {
-// 	return fl.Body.TypeRefs()
-// }
+func (fl FuncLit) String() string {
+	return fl.Arg.String() + " -> " + fl.Body.String()
+}
 
 type IntLit int
 
@@ -42,9 +42,7 @@ func (il IntLit) EqualExprNode(other ExprNode) bool {
 	return ok && il == otherIntLit
 }
 
-// func (il IntLit) TypeRefs() []TypeRef {
-// 	return nil
-// }
+func (il IntLit) String() string { return strconv.Itoa(int(il)) }
 
 type StringLit string
 
@@ -57,9 +55,11 @@ func (sl StringLit) EqualExprNode(other ExprNode) bool {
 	return ok && sl == otherStringLit
 }
 
-// func (sl StringLit) TypeRefs() []TypeRef {
-// 	return nil
-// }
+func (sl StringLit) String() string {
+	return "\"" + string(sl) + "\""
+}
+
+type TupleLit []Expr
 
 func (tl TupleLit) RenderGo(t Type) string {
 	args := make([]string, len(tl))
@@ -86,13 +86,13 @@ func (tl TupleLit) EqualExprNode(other ExprNode) bool {
 	return ok && tl.Equal(otherTupleLit)
 }
 
-// func (tl TupleLit) TypeRefs() []TypeRef {
-// 	var refs []TypeRef
-// 	for _, expr := range tl {
-// 		refs = append(refs, expr.TypeRefs()...)
-// 	}
-// 	return refs
-// }
+func (tl TupleLit) String() string {
+	args := make([]string, len(tl))
+	for i, arg := range tl {
+		args[i] = arg.String()
+	}
+	return "(" + strings.Join(args, ", ") + ")"
+}
 
 type Ident string
 
@@ -105,9 +105,7 @@ func (i Ident) EqualExprNode(other ExprNode) bool {
 	return ok && i == otherIdent
 }
 
-// func (i Ident) TypeRefs() []TypeRef {
-// 	return nil
-// }
+func (i Ident) String() string { return string(i) }
 
 type Call struct {
 	Fn  Expr
@@ -127,9 +125,9 @@ func (c Call) EqualExprNode(other ExprNode) bool {
 	return ok && c.Equal(otherCall)
 }
 
-// func (c Call) TypeRefs() []TypeRef {
-// 	return append(c.Fn.TypeRefs(), c.Arg.TypeRefs()...)
-// }
+func (c Call) String() string {
+	return c.Fn.String() + " " + c.Arg.String()
+}
 
 type Block struct {
 	Stmts []Stmt
@@ -161,6 +159,15 @@ func (b Block) EqualExprNode(other ExprNode) bool {
 	return ok && b.Equal(otherBlock)
 }
 
+func (b Block) String() string {
+	out := make([]string, len(b.Stmts)+1)
+	for i, stmt := range b.Stmts {
+		out[i] = stmt.String()
+	}
+	out[len(out)-1] = b.Expr.String()
+	return "{ " + strings.Join(out, "; ") + " }"
+}
+
 type ExprNodeVisitor interface {
 	VisitIntLit(IntLit)
 	VisitStringLit(StringLit)
@@ -173,9 +180,9 @@ type ExprNodeVisitor interface {
 
 type ExprNode interface {
 	RenderGo(t Type) string
-	// TypeRefs() []TypeRef
 	Visit(ExprNodeVisitor)
 	EqualExprNode(ExprNode) bool
+	String() string
 }
 
 func (il IntLit) Visit(env ExprNodeVisitor) {
@@ -207,9 +214,7 @@ type Expr struct {
 	Node ExprNode
 }
 
-// func (expr Expr) TypeRefs() []TypeRef {
-// 	return append(expr.Type.TypeRefs(), expr.Node.TypeRefs()...)
-// }
+func (expr Expr) String() string { return expr.Node.String() }
 
 func (expr Expr) RenderGo() string {
 	return expr.Node.RenderGo(expr.Type)

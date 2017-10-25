@@ -38,6 +38,7 @@ type Stmt interface {
 	Node
 	stmtNode()
 	EqualStmt(Stmt) bool
+	String() string
 }
 
 func (td TypeDecl) stmtNode() {}
@@ -45,10 +46,18 @@ func (ld LetDecl) stmtNode()  {}
 func (expr Expr) stmtNode()   {}
 
 type Decl interface {
-	Stmt
 	declNode()
 	EqualDecl(other Decl) bool
 }
 
+func (td TypeDecl) String() string {
+	panic("TypeDecl.String() not yet supported")
+}
+
+func (ld LetDecl) String() string {
+	return "let " + ld.Ident.String() + " = " + ld.Binding.String()
+}
+
 func (td TypeDecl) declNode() {}
 func (ld LetDecl) declNode()  {}
+func (as ArgSpec) declNode()  {}
