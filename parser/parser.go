@@ -155,57 +155,39 @@ func Expr(input combinator.Input) combinator.Result {
 }
 
 func TupleLit(input combinator.Input) combinator.Result {
-	singleElt := combinator.Seq(
-		Expr,
-		combinator.CanWS,
-		combinator.Lit(','),
-	).Get(0).Map(
-		func(v interface{}) interface{} {
-			return ast.TupleLit{v.(ast.Expr)}
-		},
-	)
-	elts := combinator.Any(
-		singleElt,
-		combinator.Seq(singleElt, combinator.CanWS, ExprList).MapSlice(
-			func(vs []interface{}) interface{} {
-				first := vs[0].(ast.Expr)
-				rest := vs[2].([]ast.Expr)
-				return ast.TupleLit(append([]ast.Expr{first}, rest...))
-			},
-		),
-	)
-	return combinator.Seq(
+	multi := combinator.Seq(
+		combinator.Lit('('),
+		// get the first n-1 elements and then the last element and return it
+		// all as a TupleLit
+		combinator.Seq(
+			combinator.Repeat(
+				combinator.Seq(
+					combinator.CanWS,
+					Expr,
+					combinator.CanWS,
+					combinator.Lit(','),
+				).Get(1),
+			).MapSlice(func(vs []interface{}) interface{} {
+				exprs := make(ast.TupleLit, len(vs))
+				for i, v := range vs {
+					exprs[i] = v.(ast.Expr)
+				}
+				return exprs
+			}),
+			combinator.CanWS,
+			Expr,
+			combinator.CanWS,
+		).MapSlice(func(vs []interface{}) interface{} {
+			return append(vs[0].(ast.TupleLit), vs[2].(ast.Expr))
+		}),
+		combinator.Lit(')'),
+	).Get(1)
+	unit := combinator.Seq(
 		combinator.Lit('('),
 		combinator.CanWS,
-		combinator.Opt(combinator.Seq(
-			combinator.Any(singleElt, elts),
-			combinator.CanWS,
-		).Get(0)),
 		combinator.Lit(')'),
-	).MapSlice(func(vs []interface{}) interface{} {
-		if vs[2] != nil {
-			return vs[2]
-		}
-		return ast.TupleLit{}
-	}).Wrap()(input)
-
-	// return combinator.Seq(
-	// 	combinator.Lit('('),
-	// 	combinator.Repeat(combinator.Seq(
-	// 		combinator.CanWS,
-	// 		Expr,
-	// 		combinator.CanWS,
-	// 		combinator.Lit(','),
-	// 	).Get(1)).MapSlice(func(vs []interface{}) interface{} {
-	// 		tup := make(ast.TupleLit, len(vs))
-	// 		for i, v := range vs {
-	// 			tup[i] = v.(ast.Expr)
-	// 		}
-	// 		return tup
-	// 	}),
-	// 	combinator.CanWS,
-	// 	combinator.Lit(')'),
-	// ).Get(1).Wrap()(input)
+	).Map(func(v interface{}) interface{} { return ast.TupleLit{} })
+	return combinator.Any(unit, multi).Wrap()(input)
 }
 
 func Block(input combinator.Input) combinator.Result {

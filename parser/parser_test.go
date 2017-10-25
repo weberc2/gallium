@@ -174,12 +174,6 @@ func TestParser(t *testing.T) {
 			Parser:      TupleLit,
 		},
 		{
-			Name:        "tuple-lit-single-elt",
-			Input:       "(a,)",
-			WantedValue: ast.TupleLit{ast.Expr{Node: ast.Ident("a")}},
-			Parser:      TupleLit,
-		},
-		{
 			Name:  "let-decl-no-type",
 			Input: "let x = 42",
 			WantedValue: ast.LetDecl{
@@ -303,10 +297,11 @@ func TestParser(t *testing.T) {
 		},
 		{
 			Name:  "tuple-lit-nested",
-			Input: "((foo))",
-			WantedValue: ast.TupleLit{ast.Expr{Node: ast.TupleLit{ast.Expr{
-				Node: ast.Ident("foo"),
-			}}}},
+			Input: "((foo, bar))",
+			WantedValue: ast.TupleLit{ast.Expr{Node: ast.TupleLit{
+				ast.Expr{Node: ast.Ident("foo")},
+				ast.Expr{Node: ast.Ident("bar")},
+			}}},
 			Parser: TupleLit,
 		},
 		{
@@ -323,9 +318,10 @@ func TestParser(t *testing.T) {
 		},
 		{
 			Name:  "expr-tuple-lit",
-			Input: "(foo)",
+			Input: "(foo, bar)",
 			WantedValue: ast.Expr{Node: ast.TupleLit{
 				ast.Expr{Node: ast.Ident("foo")},
+				ast.Expr{Node: ast.Ident("bar")},
 			}},
 			Parser: Expr,
 		},
