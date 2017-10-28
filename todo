@@ -1,0 +1,12 @@
+* Paren groups
+* Some way of binding functions/expressions to ordinary Go code
+    - Specifically for builtins, but also for interop/optimizations?
+        + Builtins are supportable by adding their signatures to the
+          Environment and putting their full definitions into a sibling
+          `builtins.go` file
+* Imports
+* Support for template expansion
+* Type declarations
+* Sum types
+* Conditionals/matching
+* Toplevel function let decls codegen into Go func decls
