@@ -1,5 +1,7 @@
 package ast
 
+import "fmt"
+
 type LetDecl struct {
 	Ident   Ident
 	Binding Expr
@@ -22,6 +24,10 @@ func (ld LetDecl) EqualNode(other Node) bool {
 func (ld LetDecl) EqualStmt(other Stmt) bool {
 	otherLetDecl, ok := other.(LetDecl)
 	return ok && ld.Equal(otherLetDecl)
+}
+
+func (ld LetDecl) RenderGo() string {
+	return fmt.Sprintf("var %s = %s", ld.Ident, ld.Binding.RenderGo())
 }
 
 type Node interface {

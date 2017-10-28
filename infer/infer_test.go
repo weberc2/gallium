@@ -127,6 +127,98 @@ func TestInfer(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "block-just-expr",
+			Env:  Environment{},
+			Input: ast.Expr{Node: ast.Block{
+				Expr: ast.Expr{Node: ast.IntLit(1)},
+			}},
+			Wanted: ast.Expr{
+				Type: ast.Primitive("int"),
+				Node: ast.Block{
+					Expr: ast.Expr{
+						Type: ast.Primitive("int"),
+						Node: ast.IntLit(1),
+					},
+				},
+			},
+		},
+		{
+			Name: "block-w-let-decl",
+			Env:  Environment{},
+			Input: ast.Expr{Node: ast.Block{
+				Stmts: []ast.Stmt{
+					ast.LetDecl{
+						Ident:   "x",
+						Binding: ast.Expr{Node: ast.StringLit("foo")},
+					},
+				},
+				Expr: ast.Expr{Node: ast.Ident("x")},
+			}},
+			Wanted: ast.Expr{
+				Type: ast.Primitive("string"),
+				Node: ast.Block{
+					Stmts: []ast.Stmt{
+						ast.LetDecl{
+							Ident:   "x",
+							Binding: ast.Expr{Node: ast.StringLit("foo")},
+						},
+					},
+					Expr: ast.Expr{
+						Type: ast.Primitive("string"),
+						Node: ast.Ident("x"),
+					},
+				},
+			},
+		},
+		{
+			Name: "block-w-dependent-let-decls",
+			Env: Environment{
+				ast.Ident("add"): ast.FuncSpec{
+					Arg: ast.Primitive("int"),
+					Ret: ast.FuncSpec{
+						Arg: ast.Primitive("int"),
+						Ret: ast.Primitive("int"),
+					},
+				},
+			},
+			Input: ast.Expr{Node: ast.Block{
+				Stmts: []ast.Stmt{
+					ast.LetDecl{
+						Ident: ast.Ident("y"),
+						Binding: ast.Expr{Node: ast.Call{
+							Fn: ast.Expr{Node: ast.Call{
+								Fn:  ast.Expr{Node: ast.Ident("add")},
+								Arg: ast.Expr{Node: ast.IntLit(1)},
+							}},
+							Arg: ast.Expr{Node: ast.IntLit(1)},
+						}},
+					},
+				},
+				Expr: ast.Expr{Node: ast.Ident("y")},
+			}},
+			Wanted: ast.Expr{
+				Type: ast.Primitive("int"),
+				Node: ast.Block{
+					Stmts: []ast.Stmt{
+						ast.LetDecl{
+							Ident: ast.Ident("y"),
+							Binding: ast.Expr{Node: ast.Call{
+								Fn: ast.Expr{Node: ast.Call{
+									Fn:  ast.Expr{Node: ast.Ident("add")},
+									Arg: ast.Expr{Node: ast.IntLit(1)},
+								}},
+								Arg: ast.Expr{Node: ast.IntLit(1)},
+							}},
+						},
+					},
+					Expr: ast.Expr{
+						Type: ast.Primitive("int"),
+						Node: ast.Ident("y"),
+					},
+				},
+			},
+		},
 	}
 
 	for _, testCase := range testCases {

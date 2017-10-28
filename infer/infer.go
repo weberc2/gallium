@@ -9,6 +9,20 @@ import (
 
 type Environment map[ast.Ident]ast.Type
 
+func (e Environment) Copy() Environment {
+	e2 := make(Environment, len(e))
+	for i, t := range e {
+		e2[i] = t
+	}
+	return e2
+}
+
+func (e Environment) Add(ident ast.Ident, t ast.Type) Environment {
+	e2 := e.Copy()
+	e2[ident] = t
+	return e2
+}
+
 var r = 'a' - 1
 
 func genNewType() ast.Type {
@@ -40,16 +54,25 @@ func AnnotateExpr(expr ast.Expr, env Environment) (ast.Expr, error) {
 		}
 		return ast.Expr{Type: ts, Node: out}, nil
 	case ast.Block:
-		// Blocks entail extending the environment with new let statements,
-		// including shadowing; we'll deal with that later
-		panic("AnnotateExpr: Blocks not yet supported")
-	case ast.FuncLit:
-		newEnv := make(map[ast.Ident]ast.Type, len(env))
-		for k, v := range env {
-			newEnv[k] = v
+		for _, stmt := range node.Stmts {
+			if letDecl, ok := stmt.(ast.LetDecl); ok {
+				binding, err := Infer(env, letDecl.Binding)
+				if err != nil {
+					return ast.Expr{}, err
+				}
+				env = env.Add(letDecl.Ident, binding.Type)
+			}
 		}
-		newEnv[node.Arg] = genNewType()
-
+		inner, err := AnnotateExpr(node.Expr, env)
+		if err != nil {
+			return ast.Expr{}, err
+		}
+		return ast.Expr{
+			Type: genNewType(),
+			Node: ast.Block{Stmts: node.Stmts, Expr: inner},
+		}, nil
+	case ast.FuncLit:
+		newEnv := env.Add(node.Arg, genNewType())
 		body, err := AnnotateExpr(node.Body, newEnv)
 		if err != nil {
 			return ast.Expr{}, err
@@ -100,7 +123,7 @@ func CollectExpr(expr ast.Expr) ([]Constraint, error) {
 		}
 		return constraints, nil
 	case ast.Block:
-		panic("CollectExpr: Blocks not yet supported")
+		return CollectExpr(node.Expr)
 	case ast.FuncLit:
 		if spec, isFunc := expr.Type.(ast.FuncSpec); isFunc {
 			bodyConstraints, err := CollectExpr(node.Body)
@@ -277,7 +300,11 @@ func ApplyExpr(subs []Substitution, expr ast.Expr) ast.Expr {
 		}
 		return ast.Expr{Node: tl, Type: Apply(subs, expr.Type)}
 	case ast.Block:
-		panic("ApplyExpr() not implemented for ast.Block")
+		inner := ApplyExpr(subs, node.Expr)
+		return ast.Expr{
+			Type: inner.Type,
+			Node: ast.Block{Stmts: node.Stmts, Expr: inner},
+		}
 	case ast.FuncLit:
 		return ast.Expr{
 			Node: ast.FuncLit{
