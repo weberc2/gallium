@@ -135,12 +135,18 @@ func ExprList(input combinator.Input) combinator.Result {
 	}).Wrap()(input)
 }
 
+func wrapExpr(v interface{}) interface{} {
+	return ast.Expr{Node: v.(ast.ExprNode)}
+}
+
 func Atom(input combinator.Input) combinator.Result {
-	return combinator.Any(TupleLit, Ident, IntLit, StringLit).Map(
-		func(v interface{}) interface{} {
-			return ast.Expr{Node: v.(ast.ExprNode)}
-		},
-	).Rename("Atom")(input)
+	return combinator.Any(
+		ParenGroup,
+		combinator.Parser.Map(TupleLit, wrapExpr),
+		Ident.Map(wrapExpr),
+		IntLit.Map(wrapExpr),
+		StringLit.Map(wrapExpr),
+	).Wrap()(input)
 }
 
 func Expr(input combinator.Input) combinator.Result {
@@ -152,6 +158,16 @@ func Expr(input combinator.Input) combinator.Result {
 		),
 		Atom,
 	).Wrap()(input)
+}
+
+func ParenGroup(input combinator.Input) combinator.Result {
+	return combinator.Seq(
+		combinator.Lit('('),
+		combinator.CanWS,
+		Expr,
+		combinator.CanWS,
+		combinator.Lit(')'),
+	).Get(2).Wrap()(input)
 }
 
 func TupleLit(input combinator.Input) combinator.Result {

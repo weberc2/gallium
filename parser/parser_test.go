@@ -355,6 +355,21 @@ func TestParser(t *testing.T) {
 			Parser: Expr,
 		},
 		{
+			Name:  "expr-parens-group",
+			Input: "print (add 1 2)",
+			WantedValue: ast.Expr{Node: ast.Call{
+				Arg: ast.Expr{Node: ast.Call{
+					Fn: ast.Expr{Node: ast.Call{
+						Fn:  ast.Expr{Node: ast.Ident("add")},
+						Arg: ast.Expr{Node: ast.IntLit(1)},
+					}},
+					Arg: ast.Expr{Node: ast.IntLit(2)},
+				}},
+				Fn: ast.Expr{Node: ast.Ident("print")},
+			}},
+			Parser: Expr,
+		},
+		{
 			Name:  "decl-type-decl",
 			Input: "type foo = int",
 			WantedValue: ast.TypeDecl{

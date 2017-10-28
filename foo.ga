@@ -6,4 +6,4 @@ let z = add x 1;
 
 let addOne = x -> add 1 x;
 
-let main = PrintInt 5;
+let main = PrintInt (add 1 x);
