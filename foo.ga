@@ -1,0 +1,9 @@
+package main
+
+let x = 4;
+let y = (x, 1);
+let z = add x 1;
+
+let addOne = x -> add 1 x;
+
+let main = PrintInt 5;
